@@ -21,7 +21,14 @@ class NI8452Interface():
         self.number_found = None
         self.status_code = c.c_long()
         self.device_handle = c.c_ulonglong()
-        self.configuration_handle = c.c_uint32()
+        self.script_handle= c.c_ulonglong()
+        self.configuration_handle = c.c_ulonglong()
+
+        # CONSTANTS
+        self.__IOPORT = c.c_uint8(0)  # Port# for GPIO on 8452
+
+        self._cIOdataIn = c.c_uint8()
+
         self.dll_location = "C:\\Windows\\System32\\Ni845x.dll"
         try:
             self.spi = c.cdll.LoadLibrary(self.dll_location)
@@ -281,6 +288,85 @@ class NI8452Interface():
         print("Return values of ni845xSpiConfigurationSetClockPhase: ", returnValue)
         self.ni845xStatusToString(returnValue)
 
+    def ni845xSpiScriptDioConfigureLine(self, PortNumber, LineNumber, ConfigurationValue):
+        """
+        Adds an SPI Script DIO Configure Line command to an SPI script referenced by ScriptHandle. This command configures a DIO line on an NI 845x device
+        int32 ni845xSpiScriptDioConfigureLine (NiHandle ScriptHandle,uInt8 PortNumber,uInt8 LineNumber,int32 ConfigurationValue);
+
+        :param: NiHandle ScriptHandle, NiHandle ScriptHandle The script handle returned from ni845xSpiScriptOpen.
+                uInt8 PortNumber: The DIO port that contains the LineNumber.
+                uInt8 LineNumber: The DIO line to configure.
+                int32 ConfigurationValue: The line configuration. ConfigurationValue uses the following values:
+                • kNi845xDioInput (0): The line is configured for input.
+                • kNi845xDioOutput (1): The line is configured for output.
+
+        :return: The function call status. Zero means the function executed successfully. Negative specifies
+        an error, meaning the function did not perform the expected behavior. Positive specifies a
+        warning, meaning the function performed as expected, but a condition arose that might
+        require attention. For more information, refer to ni845xStatusToString.
+        """
+
+        PortNumber = c.c_uint8(PortNumber)
+        LineNumber = c.c_uint8(LineNumber)
+        ConfigurationValue = c.c_int32(ConfigurationValue)
+        returnValue = self.spi.ni845xSpiScriptDioConfigureLine(self.script_handle, PortNumber, LineNumber,
+                                                               ConfigurationValue)
+        print("PortNumber set to: ", PortNumber)
+        print("LineNumber set to: ", LineNumber)
+        print("ConfigurationValue set to: ", ConfigurationValue)
+        print("Return values of ni845xSpiScriptDioConfigureLine: ", returnValue)
+        self.ni845xStatusToString(returnValue)
+
+    def ni845xDioWritePort(self, PortNumber, WriteData):
+        """
+        Adds an SPI Script DIO Configure Line command to an SPI script referenced by ScriptHandle. This command writes to a DIO line on an NI 845x device.
+        int32 ni845xSpiScriptDioWriteLine (NiHandle ScriptHandle,uInt8 PortNumber,int32 WriteData);
+
+        :param: NiHandle DeviceHandle Device handle returned from ni845xOpen.
+                uInt8 PortNumber: The DIO port to write
+                int32 WriteData:  The value to write to the DIO port. Only lines configured for output are updated.
+
+        :return: The function call status. Zero means the function executed successfully. Negative specifies an error, meaning the function did not perform the expected behavior.
+        Use ni845xDioWritePort to write all 8 bits on a byte-wide DIO port. For NI 845x devices with multiple DIO ports, use the PortNumber input to select the desired port.
+
+        """
+
+        PortNumber = c.c_uint8(PortNumber)
+        WriteData = c.c_uint8(WriteData)
+        returnValue = self.spi.ni845xDioWritePort(self.device_handle, PortNumber, WriteData)
+        print("PortNumber set to: ", PortNumber)
+        print("WriteData set to: ", WriteData)
+        print("Return values of ni845xSpiScriptDioWriteLine: ", returnValue)
+        self.ni845xStatusToString(returnValue)
+
+    def ni845xSpiScriptDioWriteLine(self, PortNumber, LineNumber, WriteData):
+        """
+        Adds an SPI Script DIO Configure Line command to an SPI script referenced by ScriptHandle. This command writes to a DIO line on an NI 845x device.
+        int32 ni845xSpiScriptDioWriteLine (NiHandle ScriptHandle,uInt8 PortNumber,uInt8 LineNumber,int32 WriteData);
+
+        :param: NiHandle ScriptHandle The script handle returned from ni845xSpiScriptOpen.
+                uInt8 PortNumber: The DIO port that contains the LineNumber.
+                uInt8 LineNumber: The DIO line to write.
+                int32 WriteData:  The value to write to the line. WriteData uses the following values:
+                    • kNi845xDioLogicLow (0): The line is set to the logic low state.
+                    • kNi845xDioLogicHigh (1): The line is set to the logic high state
+
+        :return: The function call status. Zero means the function executed successfully. Negative specifies
+        an error, meaning the function did not perform the expected behavior. Positive specifies a
+        warning, meaning the function performed as expected, but a condition arose that might
+        require attention. For more information, refer to ni845xStatusToString.
+        """
+
+        PortNumber = c.c_uint8(PortNumber)
+        LineNumber = c.c_uint8(LineNumber)
+        WriteData = c.c_uint32(WriteData)
+        returnValue = self.spi.ni845xSpiScriptDioWriteLine(self.script_handle, PortNumber, LineNumber, WriteData)
+        print("PortNumber set to: ", PortNumber)
+        print("LineNumber set to: ", LineNumber)
+        print("WriteData set to: ", WriteData)
+        print("Return values of ni845xSpiScriptDioWriteLine: ", returnValue)
+        self.ni845xStatusToString(returnValue)
+
     def ni845xSpiConfigurationSetClockPolarity(self, ClockPolarity):
         """
         Calls the NI USB-8452 C API function ni845xSpiConfigurationSetClockPolarity whose prototype is
@@ -385,52 +471,27 @@ class NI8452Interface():
         return ReadSize, ReadData
 
 
-def main():
-    """
-    Entry point to the script
-    :return: None
-    """
-    ni8452 = NI8452Interface()
-    resource_name = ni8452.ni845xFindDevice()
-    ni8452.ni845xOpen(resource_name)
-    ni8452.ni845xSetIoVoltageLevel(33)
-    # ni8452.ni845xSetTimeout(20000)
-    ni8452.ni845xSpiConfigurationOpen()
-    ni8452.ni845xSpiConfigurationSetChipSelect(0)
-    # print("ni845xSpiConfigurationGetChipSelect: ",ni8452.ni845xSpiConfigurationGetChipSelect())
-    ni8452.ni845xSpiConfigurationSetClockPhase(0)
-    # print("ni845xSpiConfigurationGetClockPhase: ", ni8452.ni845xSpiConfigurationGetClockPhase())
-    ni8452.ni845xSpiConfigurationSetClockPolarity(0)
-    # print("ni845xSpiConfigurationGetClockPolarity", ni8452.ni845xSpiConfigurationGetClockPolarity())
-    ni8452.ni845xSpiConfigurationSetClockRate(10000)
-    # print("ni845xSpiConfigurationGetClockRate: ",ni8452.ni845xSpiConfigurationGetClockRate())
-    ni8452.ni845xSpiConfigurationSetNumBitsPerSample(16)
-    # print("ni845xSpiConfigurationGetNumBitsPerSample: ", ni8452.ni845xSpiConfigurationGetNumBitsPerSample())
-    ni8452.ni845xSpiConfigurationSetPort(0)
-    # print("ni845xSpiConfigurationGetPort: ", ni8452.ni845xSpiConfigurationGetPort())
+    # --------------------------- ioWriteDIO() ---------------------------------
+    def ioWriteDIO(self, dioData=0):
+            '''Writes dioData value out of GPIO port.  Assume necessary masking
+            has already been applied to dioData. Returns 0/err code'''
+            if self.spi is None:
+                return -1
+            fRet = self.spi.ni845xDioWritePort(self.device_handle, self.__IOPORT, c.c_uint8(dioData))
+            if fRet != 0:
+                pass
+                print(self.__errStatus(fRet))
+            return fRet
 
-    WriteAdress = [0x20, 0x00]
-    BytesToWrite = 2
-    BytesToRead = 2
-    while True:
-        ReadSize, ReadData = ni8452.ni845xSpiWriteRead(WriteAdress, BytesToWrite, BytesToRead)
+    # --------------------------- ioReadDIO() ---------------------------------
+    def ioReadDIO(self):
+            '''Returns DIO data value (uint8) returned from GPIO lines'''
+            if self.spi is None:
+                return 0
+            fRet = self.spi.ni845xDioReadPort(self.device_handle, self.__IOPORT, c.byref(self._cIOdataIn))
+            if fRet != 0:
+                pass
+                print(self.__errStatus(fRet))
 
-        '''
-        Data acquisition and calculation for adc128s102evm board: 
-        '''
-        '''
-        ReadByte0 = ReadData[0]
-        ReadByte0 = ReadByte0 << 8
-        ReadByte1 = ReadData[1]
-        steps = int(ReadByte0) | int(ReadByte1)
-        VoltageValue = (0.0004028320315+((steps-1)*0.0008056640625)) 
-        print("VoltageValue: ",VoltageValue)
-        time.sleep(0.001)
-        '''
-
-    ni8452.ni845xSpiConfigurationClose()
-    ni8452.ni845xClose()
-
-
-if __name__ == '__main__':
-    main()
+            rData = self._cIOdataIn.value
+            return rData

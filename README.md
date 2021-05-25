@@ -12,3 +12,10 @@ This way of using the driver is not officially supported, meaning it has not bee
 C API: https://knowledge.ni.com/KnowledgeArticleDetails?id=kA00Z0000019La7SAE&l=en-US
 
 Driver Download Page: https://www.ni.com/en-gb/support/downloads/drivers/download.ni-845x-driver-software.html#346270
+
+
+## Example 1
+Try to control the  ni8452 sending spi commands from Python 
+
+## Example 2
+Class driver for NI8452 and AWMF-0132/0133 K/Ka-Band Rx/Tx Quad ASICs

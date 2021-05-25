@@ -2,8 +2,8 @@
 #     Spiros Daskalakis                               #
 #     last Revision: 17/05/2021                       #
 #     Python Version:  3.9                            #
+#     Email: Daskalakispiros@gmail.com                #
 #######################################################
-
 
 
 from NI845x import NI8452Interface

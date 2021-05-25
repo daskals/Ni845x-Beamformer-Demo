@@ -1,27 +1,13 @@
 #-------------------------------------------------------------------------------
 # Name:        ni8452 USB-SPI Class interface
-# Purpose:     Class driver for NI8452: all members prefixed with io
-#              for ease of use
+# Purpose:     Class driver for NI8452 and AWMF-0132/0133 K/Ka-Band Rx/Tx Quad ASICs
 #
-# Author:      astreet
+# Authors:      astreet and  Daskalakispiros
 #
-# Created:     05/02/2015
-# Copyright:   (c) astreet 2015
+# Created:     25/04/2020
+# Copyright:   (c) astreet 2020
 # Licence:     <your licence>
-#
-# History:
-# 1.00.00  15-03-04   Initial version for testing
-# 1.00.01  15-03-24   LDB line chnaged from using DIO-0 to CS-1
-#                     Frees up GPIO for DIO (Atlas mapping adjusted)
-# 1.00.02  15-03-25   Fixed bug in ioSafe/ioClose handle closing prematurely
-# 1.00.03  15-06-18   Added ioReadSPI2() for readback capability on Orion/Atlas
-# 1.00.04  15-09-15   Added ioWriteRSPI(): for comapability with FT232H
-# 1.00.05  16-01-19   Added ioOpenByName(), opens specific VISA resource
-# 1.00.06  16-01-27   Removed extraneous print statements. Added self.visaAddr
-#                     Updated/corrected version info
-# 1.00.07  16-05-23   Added ioWriteSPI3(): workaround protocol for ODIN
-# 1.00.08  17-01-06   Added support for Mercury chipset
-# 1.00.09  17-05-19   Added ioWritePulse() for Mercury OTP
+# The code is based on project: https://github.com/30Wedge/AnokiwaveChipDemo
 #-------------------------------------------------------------------------------
 
 
@@ -37,8 +23,8 @@ class SPI(object):
     def __init__(self):
 
         # Version info
-        self.__version =    '1.00.09'
-        self.__versDate =   '17-05-19'
+        self.__version = '2.00.01'
+        self.__versDate = '24-05-21'
         self.__versStatus = 'Released'
 
         # cType parameters
@@ -80,10 +66,10 @@ class SPI(object):
         try:
             fSpec = 'c:/windows/system32/Ni845x.dll'
             self._lspi = c.windll.LoadLibrary(fSpec)
-
         except:
             self.status = -1
             self.errMsg = 'Unable to load Ni845x.dll'
+
 
     # --------------------------------------------------------------------------
     # HELPER FUNCTIONS
@@ -94,11 +80,9 @@ class SPI(object):
         b1=(wordVal>>8)&255
         return [b1,b0]
 
-
     def __bytes2word(self, byteList):
         '''Returns decimal word (uint16) based on [MSB,LSB] byteList'''
         return ((byteList[0]<<8)+byteList[1])
-
 
     def __errStatus(self, statusCode):
         '''Return error message based on NI8452 error code. Updates
@@ -109,7 +93,6 @@ class SPI(object):
         self.errMsg = self.cErrMsg.value
         self.status = statusCode
         return self.errMsg
-
 
     def ioGetVersion(self):
         '''Returns (version, versionDate, versionStatus) of class driver'''
@@ -150,6 +133,8 @@ class SPI(object):
         if fRet !=0:
             #print(self.__errStatus(fRet))
             return fRet
+            # Set CS0 HIGH
+
 
         return fRet
 
@@ -330,6 +315,7 @@ class SPI(object):
         fRet += self._lspi.ni845xSpiScriptClockRate(self._cHdlScr, self.spiClk)
         # Set CS0 HIGH
         fRet += self._lspi.ni845xSpiScriptCSHigh(self._cHdlScr, c.c_uint32(0))
+
         # Set LDB HIGH (DIO-0): portNum, lineNum, dir(1=op)
         fRet += self._lspi.ni845xSpiScriptDioConfigureLine(self._cHdlScr, self.__IOPORT, c.c_uint8(0), c.c_int32(1))
 
@@ -498,6 +484,113 @@ class SPI(object):
             wordArr=rData
 
         return wordArr, fRet
+
+    # --------------------------- ioWriteSPI4() --------------------------------
+    def ioWriteSPI4(self, wData, wordSize=10):
+            '''Write wData array over SPI in wordSize chunks using SPIscript
+               Returns data read back over spi'''
+            if self._lspi is None:
+                return [], 0
+            fRet = 0
+
+            # Num of words to be transmitted
+            Nwords = len(wData)
+            # Set wFlag: if wordSize=4-8 bits then no need to manage word conversion
+            if wordSize < 4 or wordSize > 16:
+                return -1
+            elif wordSize < 9:
+                wFlag = 0
+            else:
+                wFlag = 1
+
+            # Reset script
+            fRet += self._lspi.ni845xSpiScriptReset(self._cHdlScr)
+            # Enable SPI
+            fRet += self._lspi.ni845xSpiScriptEnableSPI(self._cHdlScr)
+
+            # Configure polarity and phase
+            fRet += self._lspi.ni845xSpiScriptClockPolarityPhase(self._cHdlScr, 0, 0)
+            # Configure clock rate
+            fRet += self._lspi.ni845xSpiScriptClockRate(self._cHdlScr, self.spiClk)
+            # Set CS0 HIGH
+            fRet += self._lspi.ni845xSpiScriptCSHigh(self._cHdlScr, c.c_uint32(0))
+
+
+            # SET CS0 LOW
+            fRet += self._lspi.ni845xSpiScriptCSLow(self._cHdlScr, c.c_uint32(0))
+            # Set delay: 10us
+            fRet += self._lspi.ni845xSpiScriptUsDelay(self._cHdlScr, c.c_uint8(1))
+            # SET CS0 HIGH
+            fRet += self._lspi.ni845xSpiScriptCSHigh(self._cHdlScr, c.c_uint32(0))
+            # Set delay: 10us
+            fRet += self._lspi.ni845xSpiScriptUsDelay(self._cHdlScr, c.c_uint8(1))
+            # SET CS0 LOW
+            fRet += self._lspi.ni845xSpiScriptCSLow(self._cHdlScr, c.c_uint32(0))
+
+            # *** START WRITE LOOP ***
+            idxRead = []  # Array for read pointers
+            c_IdxRead = c.c_uint32()  # ctype for read pointer
+
+            fRet += self._lspi.ni845xSpiScriptNumBitsPerSample(self._cHdlScr, c.c_uint16(wordSize))
+
+            if wFlag == 1:
+                # Transmit data as WORDS (2 bytes per write)
+                cWdata = (c.c_uint8 * 2)()  # ctype for write data array
+                cNumBytes = c.c_uint32(2)  # 2 bytes
+                for idx in range(Nwords):
+                    cWdata[0:2] = self.__word2bytes(wData[idx])
+                    fRet += self._lspi.ni845xSpiScriptWriteRead(self._cHdlScr, cNumBytes, c.byref(cWdata),
+                                                                c.byref(c_IdxRead))
+                    idxRead.append(c_IdxRead.value)
+
+            else:
+                cNumBytes = c.c_uint32(1)
+                for idx in range(Nwords):
+                    cWdata = c.c_uint8(wData[idx])
+                    fRet += self._lspi.ni845xSpiScriptWriteRead(self._cHdlScr, cNumBytes, c.byref(cWdata),
+                                                                c.byref(c_IdxRead))
+                    idxRead.append(c_IdxRead.value)
+
+            # Set CS0 HIGH
+            fRet += self._lspi.ni845xSpiScriptCSHigh(self._cHdlScr, c.c_uint32(0))
+
+            # Set delay: 2us
+            fRet += self._lspi.ni845xSpiScriptUsDelay(self._cHdlScr, c.c_uint8(self.delayCS2LDB))
+
+            # # Set CS1 LOW
+            # fRet += self._lspi.ni845xSpiScriptCSLow(self._cHdlScr, c.c_uint32(1))
+            # # Delay LDB us
+            # fRet += self._lspi.ni845xSpiScriptUsDelay(self._cHdlScr, c.c_uint8(self.delayLDB))
+            # # Set CS1 HIGH
+            # fRet += self._lspi.ni845xSpiScriptCSHigh(self._cHdlScr, c.c_uint32(1))
+
+            # Run script
+            fRet += self._lspi.ni845xSpiScriptRun(self._cHdlScr, self._cHdl, 0)
+
+            nRead = c.c_uint32()
+
+            rData = []
+
+            for pIdx in idxRead:
+                fRet += self._lspi.ni845xSpiScriptExtractReadDataSize(self._cHdlScr, c.c_uint32(pIdx), c.byref(nRead))
+
+                cRdata = (c.c_uint8 * nRead.value)()
+                fRet = self._lspi.ni845xSpiScriptExtractReadData(self._cHdlScr, c.c_uint32(pIdx), c.byref(cRdata))
+
+                rData += cRdata[0:nRead.value]
+
+
+            # Handle word translation if wFlag True
+            if wFlag == 1:
+                wordArr = []
+                for idx in range(Nwords):
+                    wordArr.append(self.__bytes2word(rData[2 * idx:2 * idx + 2]))
+            else:
+                wordArr = rData
+
+            return wordArr, fRet
+
+
 
 
 
